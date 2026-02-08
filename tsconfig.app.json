@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    /* Base */
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+
+    /* Modules */
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    /* React */
+    "jsx": "react-jsx",
+
+    /* Segurança contra esses erros de types fantasmas */
+    "types": [],
+    "typeRoots": ["./node_modules/@types"],
+
+    /* Build/Vite */
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Qualidade de código */
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Interop */
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
