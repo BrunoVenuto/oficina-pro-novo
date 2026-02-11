@@ -90,12 +90,6 @@ export default function App() {
     const raw = localDb.getOSDetails(osBase.id) as unknown;
     const details = (raw ?? null) as OSDetails | null;
 
-<<<<<<< HEAD
-    const osAtual = details?.os ?? (os as OrdemServico);
-    const itens = (details?.itens as any[]) ?? [];
-
-    const mao = Number((osAtual).mao_de_obra ?? 0);
-=======
     const osAtual = details?.os ?? osBase;
     const itens = details?.itens ?? [];
 
@@ -103,7 +97,6 @@ export default function App() {
     const totalPecas = itens
       .filter((i) => i.tipo === "peca")
       .reduce((s, i) => s + Number(i.valor_total ?? 0), 0);
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
     // Mão de obra (itens tipo "servico") + campo extra mao_de_obra (se usado)
     const totalMaoDeObraItens = itens
@@ -121,30 +114,12 @@ export default function App() {
     const clienteNome = osAtual.cliente?.nome ?? "Cliente";
     const telefone = osAtual.cliente?.telefone ?? "";
 
-<<<<<<< HEAD
-    const placa = osAtual?.veiculo?.placa ?? "";
-    const modelo = `${osAtual?.veiculo?.marca ?? ""} ${osAtual?.veiculo?.modelo ?? ""
-      }`.trim();
-
-    const listaItens =
-      itens.length === 0
-        ? "• (nenhum item lançado)\n"
-        : itens
-          .map(
-            (i: any) =>
-              `• ${i.descricao} — ${i.quantidade}x R$ ${Number(
-                i.valor_unitario ?? 0,
-              ).toFixed(2)} = R$ ${Number(i.valor_total ?? 0).toFixed(2)}`,
-          )
-          .join("\n") + "\n";
-=======
     const placa = osAtual.veiculo?.placa ?? "";
     const modelo = `${osAtual.veiculo?.marca ?? ""} ${
       osAtual.veiculo?.modelo ?? ""
     }`.trim();
 
     const status = getStatusFromOS(osAtual);
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
     const pecasTxt = buildItensTexto(itens, "peca");
 
@@ -221,17 +196,7 @@ export default function App() {
       case "dashboard":
         return <Dashboard onSelectOS={(os) => setSelectedOS(os)} />;
       case "os":
-<<<<<<< HEAD
-        return (
-          <OSList
-            onSelectOS={(os) => setSelectedOS(os)}
-
-          />
-        );
-
-=======
         return <OSList onSelectOS={(os) => setSelectedOS(os)} />;
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
       case "clientes":
         return <Clientes />;
       case "config":

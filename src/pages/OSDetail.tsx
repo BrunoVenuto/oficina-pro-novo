@@ -1,36 +1,24 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
 import { localDb } from "../lib/localDB";
-import { OrdemServico } from "../types";
+import { useAuth } from "../contexts/AuthContext";
 
-// Tipos auxiliares usados apenas na UI
-type TimelineItem = {
-  tipo?: string;
-  data?: string;
-  descricao?: string;
-};
+import type {
+  OrdemServico,
+  OSChecklist,
+  OSItem,
+  OSFoto,
+  OSTimeline,
+} from "../types";
 
-type ItemOS = {
-  tipo?: "servico" | "peca";
-  descricao: string;
-  quantidade: number;
-  valor_unitario: number;
-  valor_total: number;
-};
-
-interface OSDetailProps {
+interface Props {
   os: OrdemServico;
   onBack: () => void;
   onSendWhatsApp: (os: OrdemServico) => void;
 }
 
-<<<<<<< HEAD
-export default function OSDetail({ os, onBack, onSendWhatsApp }: OSDetailProps) {
-  const [localOS, setLocalOS] = useState<OrdemServico>(os);
-  const [maoObra, setMaoObra] = useState<number>(os.mao_de_obra ?? 0);
-  const [novoItem, setNovoItem] = useState<ItemOS>({
-    tipo: "peca",
-=======
 type ActiveTab = "resumo" | "itens" | "checklist" | "fotos" | "timeline";
 
 type StatusOS =
@@ -105,21 +93,17 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
     valor_unitario: string;
   }>({
     tipo: "servico",
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
     descricao: "",
     quantidade: 1,
-    valor_unitario: 0,
-    valor_total: 0,
+    valor_unitario: "",
   });
-<<<<<<< HEAD
-=======
   const [itemError, setItemError] = useState<string>("");
 
   const osId = useMemo(() => os.id, [os.id]);
 
   const refresh = () => {
-    const raw = localDb.getOSDetails(osId);
-    const details = (raw ?? null) as unknown as OSDetails | null;
+    const raw = localDb.getOSDetails(osId) as unknown;
+    const details = (raw ?? null) as OSDetails | null;
     if (!details) return;
 
     setItens(details.itens);
@@ -132,40 +116,38 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
 
     setStatus(getStatusFromOS(details.os));
   };
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
   useEffect(() => {
-    setLocalOS(os);
-    setMaoObra(os.mao_de_obra ?? 0);
-  }, [os]);
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [osId]);
 
-<<<<<<< HEAD
-  if (!localOS) {
-    return <div className="p-4">Ordem de serviço não encontrada.</div>;
-  }
-=======
-  // ===== Totais (separados) =====
+  // ===== Totais separados =====
   const totalPecas = useMemo(() => {
     return itens
       .filter((i) => i.tipo === "peca")
       .reduce((sum, i) => sum + Number(i.valor_total || 0), 0);
   }, [itens]);
 
-  const totalServicos = useMemo(() => {
+  const totalMaoDeObraItens = useMemo(() => {
     return itens
       .filter((i) => i.tipo === "servico")
       .reduce((sum, i) => sum + Number(i.valor_total || 0), 0);
   }, [itens]);
 
-  const totalMaoDeObra = useMemo(() => {
+  const maoDeObraExtra = useMemo(() => {
     const parsed = parseBRLDecimal(maoDeObra);
     if (parsed === null) return 0;
     return parsed >= 0 ? parsed : 0;
   }, [maoDeObra]);
 
+  const totalMaoDeObra = useMemo(() => {
+    return totalMaoDeObraItens + maoDeObraExtra;
+  }, [totalMaoDeObraItens, maoDeObraExtra]);
+
   const totalGeral = useMemo(() => {
-    return totalPecas + totalServicos + totalMaoDeObra;
-  }, [totalPecas, totalServicos, totalMaoDeObra]);
+    return totalPecas + totalMaoDeObra;
+  }, [totalPecas, totalMaoDeObra]);
 
   const toggleChecklistItem = (item: OSChecklist) => {
     const checked = localDb.toggleChecklist(item.id);
@@ -175,34 +157,20 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
       );
     }
   };
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
-  // ================================
-  // Ações
-  // ================================
-  const adicionarItem = () => {
-    if (!novoItem.descricao || novoItem.quantidade <= 0) return;
+  const salvarMaoDeObra = () => {
+    setMaoError("");
 
-<<<<<<< HEAD
-    const valor_total = Number((novoItem.quantidade * novoItem.valor_unitario).toFixed(2));
-    const itemComTotal = { ...novoItem, valor_total };
-=======
     const valor = parseBRLDecimal(maoDeObra);
     if (valor === null || valor < 0) {
       setMaoError("Valor inválido.");
       return;
     }
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
-    const itensAtuais: ItemOS[] = Array.isArray(localOS.itens) ? localOS.itens : [];
+    localDb.setMaoDeObra({ os_id: osId, valor, user_id: user?.id });
+    refresh();
+  };
 
-<<<<<<< HEAD
-    const atualizado: OrdemServico = {
-      ...localOS,
-      itens: [...itensAtuais, itemComTotal],
-      valor_total: (localOS.valor_total || 0) + valor_total,
-    };
-=======
   const salvarStatus = () => {
     localDb.setOSStatus({
       os_id: osId,
@@ -211,15 +179,10 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
     });
     refresh();
   };
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
-    localDb.updateOS(atualizado);
-    setLocalOS(atualizado);
+  const addItem = () => {
+    setItemError("");
 
-<<<<<<< HEAD
-    setNovoItem({
-      tipo: "peca",
-=======
     const descricao = itemForm.descricao.trim();
     if (!descricao) {
       setItemError("Informe a descrição.");
@@ -251,96 +214,26 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
 
     setItemForm({
       tipo: "servico",
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
       descricao: "",
       quantidade: 1,
-      valor_unitario: 0,
-      valor_total: 0,
+      valor_unitario: "",
     });
+    setItemModalOpen(false);
   };
-
-  const salvarMaoObra = () => {
-    const atualizado = {
-      ...localOS,
-      valor_total:
-        (localOS.valor_total || 0) -
-        ((localOS as OrdemServico & { mao_de_obra?: number }).mao_de_obra || 0) +
-        maoObra,
-    } as OrdemServico & { mao_de_obra?: number };
-
-    atualizado.mao_de_obra = maoObra;
-
-    localDb.updateOS(atualizado as OrdemServico);
-    setLocalOS(atualizado as OrdemServico);
-  };
-
-  const alterarStatus = (
-    status:
-      | "aberta"
-      | "aguardando_peca"
-      | "concluida"
-      | "entregue"
-      | "em_andamento",
-  ) => {
-    localDb.setOSStatus({
-      os_id: localOS.id,
-      status,
-    });
-
-    const atualizada = localDb.getOS(localOS.id);
-    if (atualizada) setLocalOS(atualizada);
-  };
-
-  // ================================
-  // Render
-  // ================================
-  const itens: ItemOS[] = Array.isArray(localOS.itens) ? localOS.itens : [];
-
-  const timeline: TimelineItem[] = Array.isArray(
-    (localOS as OrdemServico & { timeline?: TimelineItem[] }).timeline,
-  )
-    ? ((localOS as OrdemServico & { timeline?: TimelineItem[] })
-      .timeline as TimelineItem[])
-    : [];
 
   return (
-    <div className="p-4 space-y-4">
-      <button className="text-sm font-medium text-zinc-400 hover:text-white transition-colors" onClick={onBack}>
-        ← Voltar para lista
-      </button>
+    <div className="p-4 space-y-3">
+      <Button onClick={onBack}>← Voltar</Button>
 
-      <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-2xl font-bold text-white font-mono">OS #{localOS.numero}</div>
-          <button
-            onClick={() => onSendWhatsApp(localOS)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors"
-          >
-            WhatsApp
-          </button>
-        </div>
+      <Card>
+        <p className="text-gray-400 text-sm">OS #{os.numero}</p>
+        <h2 className="text-xl text-white font-bold">{os.veiculo?.placa}</h2>
+        <p className="text-gray-400">{os.cliente?.nome}</p>
 
-<<<<<<< HEAD
-        <div className="text-sm text-zinc-400">Status atual: <span className="text-yellow-400 font-bold uppercase">{localOS.status}</span></div>
-
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => alterarStatus("aberta")}
-            className="px-2 py-1 bg-zinc-800 rounded"
-          >
-            Aberta
-          </button>
-=======
-        {/* Orçamento separado (mobile-first) */}
         <div className="mt-3 space-y-1 text-sm">
           <div className="flex justify-between text-gray-200">
             <span>Peças</span>
             <span>R$ {formatBRL(totalPecas)}</span>
-          </div>
-
-          <div className="flex justify-between text-gray-200">
-            <span>Serviços</span>
-            <span>R$ {formatBRL(totalServicos)}</span>
           </div>
 
           <div className="flex justify-between text-gray-200">
@@ -360,58 +253,41 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
           Enviar WhatsApp
         </Button>
       </Card>
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
 
-          <button
-            onClick={() => alterarStatus("em_andamento")}
-            className="px-2 py-1 bg-zinc-800 rounded"
-          >
-            Em andamento
-          </button>
-
-          <button
-            onClick={() => alterarStatus("aguardando_peca")}
-            className="px-2 py-1 bg-zinc-800 rounded"
-          >
-            Aguardando peça
-          </button>
-
-          <button
-            onClick={() => alterarStatus("concluida")}
-            className="px-2 py-1 bg-green-900 rounded"
-          >
-            Concluída
-          </button>
-
-          <button
-            onClick={() => alterarStatus("entregue")}
-            className="px-2 py-1 bg-blue-900 rounded"
-          >
-            Entregue
-          </button>
-        </div>
+      {/* Tabs */}
+      <div className="grid grid-cols-5 gap-2">
+        {(["resumo", "itens", "checklist", "fotos", "timeline"] as const).map(
+          (tab) => (
+            <Button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={activeTab === tab ? "bg-[#FFC107] text-black" : ""}
+            >
+              {tab}
+            </Button>
+          ),
+        )}
       </div>
 
-      {/* Itens */}
-      <div className="bg-zinc-900 rounded-xl p-4 space-y-3">
-        <div className="font-bold">Itens</div>
+      {/* ===== RESUMO ===== */}
+      {activeTab === "resumo" && (
+        <>
+          <Card>
+            <p className="text-white font-semibold mb-2">
+              Mão de obra (mecânico)
+            </p>
 
-        {itens.length > 0 && (
-          <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-zinc-500 border-b border-zinc-800 pb-2 px-1">
-            <div className="col-span-1">Tipo</div>
-            <div className="col-span-5">Descrição</div>
-            <div className="col-span-2 text-center">Qtd</div>
-            <div className="col-span-2 text-right">Unitário</div>
-            <div className="col-span-2 text-right">Total</div>
-          </div>
-        )}
+            <div className="grid grid-cols-3 gap-2 items-end">
+              <div className="col-span-2">
+                <Input
+                  label="Valor (R$)"
+                  inputMode="decimal"
+                  placeholder="Ex: 150,00"
+                  value={maoDeObra}
+                  onChange={(e) => setMaoDeObra(e.target.value)}
+                />
+              </div>
 
-<<<<<<< HEAD
-        {itens.map((f: ItemOS, i: number) => (
-          <div
-            key={i}
-            className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center text-sm border-b border-zinc-800/50 py-2 px-1 hover:bg-zinc-800/30 transition-colors"
-=======
               <Button onClick={salvarMaoDeObra}>Salvar</Button>
             </div>
 
@@ -420,7 +296,6 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
             )}
           </Card>
 
-          {/* STATUS */}
           <Card>
             <p className="text-white font-semibold mb-2">Status da OS</p>
 
@@ -429,10 +304,14 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
                 <label className="block text-sm text-gray-400 mb-1">
                   Status
                 </label>
+
                 <select
                   className="w-full min-h-[48px] rounded-xl bg-[#1A1F26] border border-gray-800 text-white px-3"
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as StatusOS)}
+                  onChange={(e) => {
+                    const v = e.target.value as unknown;
+                    setStatus(isStatusOS(v) ? v : "aberta");
+                  }}
                 >
                   <option value="aberta">aberta</option>
                   <option value="em_andamento">em_andamento</option>
@@ -480,7 +359,7 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
                       {i.quantidade} x R$ {formatBRL(Number(i.valor_unitario))}
                     </p>
                     <p className="text-gray-500 text-xs mt-1">
-                      Tipo: {i.tipo === "peca" ? "peça" : "serviço"}
+                      Tipo: {i.tipo === "peca" ? "peça" : "mão de obra"}
                     </p>
                   </div>
                   <p className="text-[#FFC107]">
@@ -500,36 +379,14 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
             key={c.id}
             onClick={() => toggleChecklistItem(c)}
             className="cursor-pointer"
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
           >
-            <div className="md:col-span-1">
-              <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${f.tipo === 'servico' ? 'bg-blue-900/50 text-blue-300' : 'bg-emerald-900/50 text-emerald-300'}`}>
-                {f.tipo === 'servico' ? 'SRV' : 'PÇA'}
-              </span>
+            <div className="flex justify-between">
+              <p className="text-white">{c.item}</p>
+              <p>{c.checked ? "✅" : "⬜"}</p>
             </div>
-            <div className="md:col-span-5 text-white font-medium">{f.descricao}</div>
-            <div className="md:col-span-2 md:text-center text-zinc-400">
-              <span className="md:hidden text-zinc-500 mr-1">Qtd:</span>{f.quantidade}
-            </div>
-            <div className="md:col-span-2 md:text-right text-zinc-400">
-              <span className="md:hidden text-zinc-500 mr-1">Vl Unit:</span>R$ {Number(f.valor_unitario || 0).toFixed(2)}
-            </div>
-            <div className="md:col-span-2 text-right font-bold text-white">
-              <span className="md:hidden text-zinc-500 mr-1">Total:</span>R$ {Number(f.valor_total || 0).toFixed(2)}
-            </div>
-          </div>
+          </Card>
         ))}
 
-<<<<<<< HEAD
-        <div className="bg-zinc-800/40 p-4 rounded-xl border border-zinc-800 space-y-4 mt-2">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            <div className="md:col-span-2">
-              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">Tipo</label>
-              <select
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                value={novoItem.tipo}
-                onChange={(e) => setNovoItem({ ...novoItem, tipo: e.target.value as "servico" | "peca" })}
-=======
       {/* ===== FOTOS ===== */}
       {activeTab === "fotos" && (
         <Card>
@@ -580,98 +437,75 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
                 className={
                   itemForm.tipo === "servico" ? "bg-[#FFC107] text-black" : ""
                 }
->>>>>>> c582b9f (feat(os): orçamento e WhatsApp com peças e mão de obra separadas)
               >
-                <option value="peca">Peça</option>
-                <option value="servico">Serviço</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-5">
-              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">Descrição</label>
-              <input
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                placeholder="Ex: Óleo 5W30"
-                value={novoItem.descricao}
-                onChange={(e) => setNovoItem({ ...novoItem, descricao: e.target.value })}
-              />
-            </div>
-
-            <div className="md:col-span-1">
-              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">Qtd</label>
-              <input
-                type="number"
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                placeholder="1"
-                min="1"
-                value={novoItem.quantidade}
-                onChange={(e) => setNovoItem({ ...novoItem, quantidade: Number(e.target.value) })}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">Vl Unitário</label>
-              <input
-                type="number"
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                placeholder="0.00"
-                value={novoItem.valor_unitario}
-                onChange={(e) => setNovoItem({ ...novoItem, valor_unitario: Number(e.target.value) })}
-              />
-            </div>
-
-            <div className="md:col-span-2 flex items-end">
-              <button
-                onClick={adicionarItem}
-                className="w-full bg-yellow-500 hover:bg-yellow-600 active:scale-95 text-zinc-950 font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1"
+                Mão de obra
+              </Button>
+              <Button
+                onClick={() => setItemForm((p) => ({ ...p, tipo: "peca" }))}
+                className={
+                  itemForm.tipo === "peca" ? "bg-[#FFC107] text-black" : ""
+                }
               >
-                <span>Adicionar</span>
-              </button>
+                Peça
+              </Button>
+            </div>
+
+            <Input
+              label="Descrição"
+              placeholder={
+                itemForm.tipo === "servico"
+                  ? "Ex: Troca de óleo"
+                  : "Ex: Filtro de óleo"
+              }
+              value={itemForm.descricao}
+              onChange={(e) =>
+                setItemForm((p) => ({ ...p, descricao: e.target.value }))
+              }
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Quantidade"
+                type="number"
+                min={1}
+                value={String(itemForm.quantidade)}
+                onChange={(e) =>
+                  setItemForm((p) => ({
+                    ...p,
+                    quantidade: Number(e.target.value),
+                  }))
+                }
+              />
+              <Input
+                label="Valor unitário (R$)"
+                inputMode="decimal"
+                placeholder="Ex: 120,00"
+                value={itemForm.valor_unitario}
+                onChange={(e) =>
+                  setItemForm((p) => ({ ...p, valor_unitario: e.target.value }))
+                }
+              />
+            </div>
+
+            {itemError && <p className="text-red-400 text-sm">{itemError}</p>}
+
+            <div className="flex gap-2">
+              <Button onClick={addItem} className="flex-1">
+                Salvar
+              </Button>
+
+              <Button
+                onClick={() => setItemModalOpen(false)}
+                className="flex-1 bg-gray-700"
+              >
+                Cancelar
+              </Button>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Mão de obra */}
-      <div className="bg-zinc-900 rounded-xl p-4 space-y-2">
-        <div className="font-bold">Mão de obra</div>
-
-        <div className="flex gap-2">
-          <input
-            type="number"
-            className="flex-1 bg-zinc-800 rounded px-2 py-1"
-            value={maoObra}
-            onChange={(e) => setMaoObra(Number(e.target.value))}
-          />
-
-          <button onClick={salvarMaoObra} className="bg-green-700 px-2 rounded">
-            Salvar
-          </button>
-        </div>
-      </div>
-
-      {/* Total */}
-      <div className="bg-zinc-900 rounded-xl p-4">
-        <div className="text-sm text-zinc-400">Valor total</div>
-
-        <div className="text-xl font-bold text-yellow-400">
-          R$ {Number(localOS.valor_total || 0).toFixed(2)}
-        </div>
-      </div>
-
-      {/* Timeline */}
-      <div className="bg-zinc-900 rounded-xl p-4 space-y-2">
-        <div className="font-bold">Histórico</div>
-
-        {(Array.isArray(timeline) ? timeline : []).map(
-          (t: TimelineItem, i: number) => (
-            <div key={i} className="text-sm border-b border-zinc-800 pb-1">
-              <div className="text-zinc-400">{t.data}</div>
-              <div>{t.descricao}</div>
-            </div>
-          ),
-        )}
-      </div>
+      )}
     </div>
   );
 }
+
+export default OSDetail;
