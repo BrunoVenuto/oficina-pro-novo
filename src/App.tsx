@@ -24,29 +24,26 @@ type OSDetails = {
 type WhatsAppOS = OrdemServico & {
   mensagem?: string;
   telefone?: string;
-  totalPecas?: number;
-  totalMaoDeObra?: number;
-  totalFinal?: number;
 };
 
-function formatBRL(value: number): string {
-  return Number(value).toFixed(2);
+function brl(n: number): string {
+  return Number(n).toFixed(2).replace(".", ",");
 }
 
-function getMaoDeObraExtraFromOS(os: OrdemServico): number {
+function getMaoDeObra(os: OrdemServico): number {
   const raw = os as unknown as { mao_de_obra?: unknown };
   const n = Number(raw.mao_de_obra ?? 0);
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-function getStatusFromOS(os: OrdemServico): string {
+function getStatus(os: OrdemServico): string {
   const raw = os as unknown as { status?: unknown };
   return typeof raw.status === "string" && raw.status.trim()
     ? raw.status
     : "aberta";
 }
 
-function buildItensTexto(itens: OSItem[], tipo: "servico" | "peca"): string {
+function buildItensTexto(itens: OSItem[], tipo: "peca" | "servico"): string {
   const lista = itens.filter((i) => i.tipo === tipo);
 
   if (lista.length === 0) {
@@ -58,11 +55,7 @@ function buildItensTexto(itens: OSItem[], tipo: "servico" | "peca"): string {
       const qtd = Number(i.quantidade ?? 0);
       const unit = Number(i.valor_unitario ?? 0);
       const total = Number(i.valor_total ?? 0);
-
-      // Se for serviço, ele é mão de obra (por item)
-      return `• ${i.descricao} — ${qtd}x R$ ${formatBRL(unit)} = R$ ${formatBRL(
-        total,
-      )}`;
+      return `• ${i.descricao} — ${qtd}x R$ ${brl(unit)} = R$ ${brl(total)}`;
     })
     .join("\n");
 }
@@ -73,6 +66,7 @@ export default function App() {
   const [activePage, setActivePage] = useState<Page>("dashboard");
   const [showNewOSWizard, setShowNewOSWizard] = useState(false);
   const [selectedOS, setSelectedOS] = useState<OrdemServico | null>(null);
+
   const [whatsappOS, setWhatsappOS] = useState<WhatsAppOS | null>(null);
 
   if (loading) {
@@ -84,7 +78,7 @@ export default function App() {
   }
 
   // ===================================================
-  // WHATSAPP – mensagem com PEÇAS e MÃO DE OBRA (somente)
+  // WHATSAPP – orçamento curto (Peças + Mão de obra)
   // ===================================================
   const handleSendWhatsApp = (osBase: OrdemServico) => {
     const raw = localDb.getOSDetails(osBase.id) as unknown;
@@ -93,67 +87,55 @@ export default function App() {
     const osAtual = details?.os ?? osBase;
     const itens = details?.itens ?? [];
 
-    // Peças = itens tipo "peca"
+    const maoExtra = getMaoDeObra(osAtual);
+
     const totalPecas = itens
       .filter((i) => i.tipo === "peca")
-      .reduce((s, i) => s + Number(i.valor_total ?? 0), 0);
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
 
-    // Mão de obra (itens tipo "servico") + campo extra mao_de_obra (se usado)
-    const totalMaoDeObraItens = itens
+    const totalMaoItens = itens
       .filter((i) => i.tipo === "servico")
-      .reduce((s, i) => s + Number(i.valor_total ?? 0), 0);
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
 
-    const maoDeObraExtra = getMaoDeObraExtraFromOS(osAtual);
-
-    const totalMaoDeObra = Number(
-      (totalMaoDeObraItens + maoDeObraExtra).toFixed(2),
-    );
-
-    const totalFinal = Number((totalPecas + totalMaoDeObra).toFixed(2));
+    const totalMao = Number((totalMaoItens + maoExtra).toFixed(2));
+    const totalFinal = Number((totalPecas + totalMao).toFixed(2));
 
     const clienteNome = osAtual.cliente?.nome ?? "Cliente";
-    const telefone = osAtual.cliente?.telefone ?? "";
+    const clienteTel = osAtual.cliente?.telefone ?? "";
 
     const placa = osAtual.veiculo?.placa ?? "";
-    const modelo = `${osAtual.veiculo?.marca ?? ""} ${
-      osAtual.veiculo?.modelo ?? ""
-    }`.trim();
+    const modelo =
+      `${osAtual.veiculo?.marca ?? ""} ${osAtual.veiculo?.modelo ?? ""}`.trim();
 
-    const status = getStatusFromOS(osAtual);
+    const status = getStatus(osAtual);
 
     const pecasTxt = buildItensTexto(itens, "peca");
-
-    // Aqui “servico” vira “mão de obra”
     const maoItensTxt = buildItensTexto(itens, "servico");
     const maoExtraTxt =
-      maoDeObraExtra > 0
-        ? `\n• Mão de obra (mecânico): R$ ${formatBRL(maoDeObraExtra)}`
-        : "";
+      maoExtra > 0 ? `\n• Mão de obra (mecânico): R$ ${brl(maoExtra)}` : "";
 
-    const mensagem =
-      `Olá, ${clienteNome}! 👋\n\n` +
-      `Orçamento / Atualização da OS #${osAtual.numero ?? ""}\n` +
-      `🚗 Veículo: ${placa}${modelo ? ` (${modelo})` : ""}\n` +
-      `📌 Status: ${status}\n\n` +
-      `🔩 Peças:\n${pecasTxt}\n\n` +
-      `🧰 Mão de obra:\n${maoItensTxt}${maoExtraTxt}\n\n` +
-      `📌 Total:\n` +
-      `• Peças: R$ ${formatBRL(totalPecas)}\n` +
-      `• Mão de obra: R$ ${formatBRL(totalMaoDeObra)}\n` +
-      `💰 Total geral: R$ ${formatBRL(totalFinal)}\n\n` +
-      `Qualquer dúvida, estou à disposição.`;
+    const msg =
+      `ORÇAMENTO OS #${osAtual.numero ?? ""}\n` +
+      `${placa}${modelo ? ` • ${modelo}` : ""}\n` +
+      `Status: ${status}\n\n` +
+      `PEÇAS:\n${pecasTxt}\n\n` +
+      `MÃO DE OBRA:\n${maoItensTxt}${maoExtraTxt}\n\n` +
+      `TOTAIS:\n` +
+      `Peças: R$ ${brl(totalPecas)}\n` +
+      `Mão de obra: R$ ${brl(totalMao)}\n` +
+      `TOTAL: R$ ${brl(totalFinal)}\n`;
 
     setWhatsappOS({
       ...osAtual,
+      mensagem: msg,
+      telefone: clienteTel,
       valor_total: totalFinal,
-      mensagem,
-      telefone,
-      totalPecas,
-      totalMaoDeObra,
-      totalFinal,
     });
   };
 
+  // ===================================================
+  // Navegação interna
+  // ===================================================
   const handleBackFromOS = () => {
     setSelectedOS(null);
   };
@@ -195,12 +177,16 @@ export default function App() {
     switch (activePage) {
       case "dashboard":
         return <Dashboard onSelectOS={(os) => setSelectedOS(os)} />;
+
       case "os":
         return <OSList onSelectOS={(os) => setSelectedOS(os)} />;
+
       case "clientes":
         return <Clientes />;
+
       case "config":
         return <Config />;
+
       default:
         return <Dashboard onSelectOS={(os) => setSelectedOS(os)} />;
     }

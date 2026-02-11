@@ -202,9 +202,9 @@ export const localDb = {
     } as OrdemServico;
 
     // campos extras (local)
-    (os).mao_de_obra = 0;
-    (os).paid_at = null;
-    (os).data_conclusao = null;
+    os.mao_de_obra = 0;
+    os.paid_at = null;
+    os.data_conclusao = null;
 
     db.ordens_servico.push(os);
     saveDB(db);
@@ -244,34 +244,34 @@ export const localDb = {
   setOSStatus(input: {
     os_id: string;
     status:
-    | "aberta"
-    | "em_andamento"
-    | "aguardando_peca"
-    | "concluida"
-    | "entregue";
+      | "aberta"
+      | "em_andamento"
+      | "aguardando_peca"
+      | "concluida"
+      | "entregue";
     user_id?: string;
   }) {
     const db = loadDB();
     const os = db.ordens_servico.find((o) => o.id === input.os_id);
     if (!os) throw new Error("OS não encontrada.");
 
-    const prev = (os).status;
+    const prev = os.status;
 
-    (os).status = input.status;
+    os.status = input.status;
     os.updated_at = nowIso();
 
     // Se marcou como concluída = recebeu o dinheiro
     if (input.status === "concluida") {
-      (os).paid_at = (os).paid_at ?? nowIso();
-      (os).data_conclusao = (os).data_conclusao ?? nowIso();
+      os.paid_at = os.paid_at ?? nowIso();
+      os.data_conclusao = os.data_conclusao ?? nowIso();
     }
 
     // Se marcou entregue, não mexe no valor, só registra evento
     if (input.status === "entregue") {
-      (os).delivered_at = (os).delivered_at ?? nowIso();
+      os.delivered_at = os.delivered_at ?? nowIso();
       // (opcional) se entregou e ainda não marcou pagamento, marca
-      (os).paid_at = (os).paid_at ?? nowIso();
-      (os).data_conclusao = (os).data_conclusao ?? nowIso();
+      os.paid_at = os.paid_at ?? nowIso();
+      os.data_conclusao = os.data_conclusao ?? nowIso();
     }
 
     db.os_timeline.push({
@@ -295,11 +295,11 @@ export const localDb = {
     if (!os) throw new Error("OS não encontrada.");
 
     const mao = Number(input.valor.toFixed(2));
-    (os).mao_de_obra = mao;
+    os.mao_de_obra = mao;
 
     const totalItens = db.os_itens
       .filter((i) => i.os_id === input.os_id)
-      .reduce((sum, i) => sum + Number((i).valor_total ?? 0), 0);
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
 
     os.valor_total = Number((totalItens + mao).toFixed(2));
     os.updated_at = nowIso();
@@ -353,7 +353,7 @@ export const localDb = {
       .filter((i) => i.os_id === input.os_id)
       .reduce((sum, i) => sum + Number(i.valor_total), 0);
 
-    const mao = Number((os).mao_de_obra ?? 0);
+    const mao = Number(os.mao_de_obra ?? 0);
 
     os.valor_total = Number((totalItens + mao).toFixed(2));
     os.updated_at = nowIso();
@@ -368,6 +368,106 @@ export const localDb = {
 
     saveDB(db);
     return item;
+  },
+
+  // =========================
+  // Remover itens / Recalcular
+  // =========================
+  removeOSItem(input: { item_id: string; user_id?: string }) {
+    const db = loadDB();
+    const idx = db.os_itens.findIndex((i) => i.id === input.item_id);
+    if (idx === -1) throw new Error("Item não encontrado.");
+
+    const item = db.os_itens[idx];
+    const os = db.ordens_servico.find((o) => o.id === item.os_id);
+    if (!os) throw new Error("OS não encontrada.");
+
+    db.os_itens.splice(idx, 1);
+
+    const totalItens = db.os_itens
+      .filter((i) => i.os_id === item.os_id)
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
+
+    const mao = Number(os.mao_de_obra ?? 0);
+
+    os.valor_total = Number((totalItens + mao).toFixed(2));
+    os.updated_at = nowIso();
+
+    db.os_timeline.push({
+      id: uuid(),
+      os_id: item.os_id,
+      evento: `Item removido: ${item.descricao}`,
+      created_at: nowIso(),
+      user_id: input.user_id,
+    });
+
+    saveDB(db);
+    return true;
+  },
+
+  removeOSItensByTipo(input: {
+    os_id: string;
+    tipo: "servico" | "peca";
+    user_id?: string;
+  }) {
+    const db = loadDB();
+    const os = db.ordens_servico.find((o) => o.id === input.os_id);
+    if (!os) throw new Error("OS não encontrada.");
+
+    const before = db.os_itens.length;
+    db.os_itens = db.os_itens.filter(
+      (i) => !(i.os_id === input.os_id && i.tipo === input.tipo),
+    );
+    const removed = before - db.os_itens.length;
+
+    const totalItens = db.os_itens
+      .filter((i) => i.os_id === input.os_id)
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
+
+    const mao = Number(os.mao_de_obra ?? 0);
+
+    os.valor_total = Number((totalItens + mao).toFixed(2));
+    os.updated_at = nowIso();
+
+    db.os_timeline.push({
+      id: uuid(),
+      os_id: input.os_id,
+      evento:
+        input.tipo === "peca"
+          ? `Peças removidas (${removed})`
+          : `Mão de obra (itens) removida (${removed})`,
+      created_at: nowIso(),
+      user_id: input.user_id,
+    });
+
+    saveDB(db);
+    return removed;
+  },
+
+  clearMaoDeObra(input: { os_id: string; user_id?: string }) {
+    const db = loadDB();
+    const os = db.ordens_servico.find((o) => o.id === input.os_id);
+    if (!os) throw new Error("OS não encontrada.");
+
+    os.mao_de_obra = 0;
+
+    const totalItens = db.os_itens
+      .filter((i) => i.os_id === input.os_id)
+      .reduce((sum, i) => sum + Number(i.valor_total ?? 0), 0);
+
+    os.valor_total = Number(totalItens.toFixed(2));
+    os.updated_at = nowIso();
+
+    db.os_timeline.push({
+      id: uuid(),
+      os_id: input.os_id,
+      evento: "Mão de obra (mecânico) zerada",
+      created_at: nowIso(),
+      user_id: input.user_id,
+    });
+
+    saveDB(db);
+    return 0;
   },
 
   // =========================
@@ -435,7 +535,7 @@ export const localDb = {
     const index = db.ordens_servico.findIndex((o) => o.id === updated.id);
     if (index === -1) throw new Error("OS não encontrada para atualização.");
 
-    // Remove relations to avoid cyclic storage if any
+    // Remove relations to avoid cyclic storage if needed
     const { cliente, veiculo, itens, timeline, ...clean } = updated;
     db.ordens_servico[index] = {
       ...db.ordens_servico[index],

@@ -1,120 +1,125 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { localDb } from "../lib/localDB";
-import { useAuth } from "../contexts/AuthContext";
+import type { OrdemServico, OSItem, StatusOS } from "../types";
 
-import type {
-  OrdemServico,
-  OSChecklist,
-  OSItem,
-  OSFoto,
-  OSTimeline,
-} from "../types";
-
-interface Props {
+interface OSDetailProps {
   os: OrdemServico;
   onBack: () => void;
   onSendWhatsApp: (os: OrdemServico) => void;
 }
 
-type ActiveTab = "resumo" | "itens" | "checklist" | "fotos" | "timeline";
-
-type StatusOS =
-  | "aberta"
-  | "em_andamento"
-  | "aguardando_peca"
-  | "concluida"
-  | "entregue";
-
 type OSDetails = {
   os: OrdemServico;
   itens: OSItem[];
-  checklist: OSChecklist[];
-  fotos: OSFoto[];
-  timeline: OSTimeline[];
 };
 
-function isStatusOS(v: unknown): v is StatusOS {
-  return (
-    v === "aberta" ||
-    v === "em_andamento" ||
-    v === "aguardando_peca" ||
-    v === "concluida" ||
-    v === "entregue"
-  );
+type ItemForm = {
+  tipo: "peca" | "servico";
+  descricao: string;
+  quantidade: number;
+  valor_unitario: number;
+};
+
+function brl(n: number): string {
+  return Number(n).toFixed(2).replace(".", ",");
 }
 
-function getStatusFromOS(value: OrdemServico): StatusOS {
-  const unknownOS = value as unknown as { status?: unknown };
-  return isStatusOS(unknownOS.status) ? unknownOS.status : "aberta";
+function parseNumberSafe(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function getMaoDeObraFromOS(value: OrdemServico): number {
-  const unknownOS = value as unknown as { mao_de_obra?: unknown };
-  const n = Number(unknownOS.mao_de_obra ?? 0);
+function getMaoDeObra(os: OrdemServico): number {
+  const raw = os as unknown as { mao_de_obra?: unknown };
+  const n = Number(raw.mao_de_obra ?? 0);
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-function parseBRLDecimal(input: string): number | null {
-  const n = Number(String(input).replace(",", "."));
-  if (!Number.isFinite(n)) return null;
-  return n;
+function suggestTipo(descricao: string): "peca" | "servico" {
+  const d = descricao.toLowerCase().trim();
+
+  const servicoKeys = [
+    "troca ",
+    "trocar ",
+    "instala",
+    "mão de obra",
+    "mao de obra",
+    "revis",
+    "diagn",
+    "alinh",
+    "balance",
+    "limpeza",
+    "mecânico",
+    "mecanico",
+    "regul",
+    "ajuste",
+  ];
+
+  const pecaKeys = [
+    "vela",
+    "velas",
+    "bomba",
+    "filtro",
+    "correia",
+    "pastilha",
+    "disco",
+    "rolamento",
+    "sensor",
+    "junta",
+    "retentor",
+    "radiador",
+    "amortec",
+    "pneu",
+    "bateria",
+    "óleo",
+    "oleo",
+    "fluido",
+    "aditivo",
+  ];
+
+  if (servicoKeys.some((k) => d.includes(k))) return "servico";
+
+  if (pecaKeys.some((k) => d.includes(k))) {
+    // exceção: troca de óleo é serviço
+    if (
+      (d.includes("troca") || d.includes("trocar")) &&
+      (d.includes("óleo") || d.includes("oleo"))
+    ) {
+      return "servico";
+    }
+    return "peca";
+  }
+
+  return "servico";
 }
 
-function formatBRL(n: number): string {
-  return Number(n).toFixed(2);
-}
+export default function OSDetail({
+  os,
+  onBack,
+  onSendWhatsApp,
+}: OSDetailProps) {
+  const osId = useMemo(() => os.id, [os.id]);
 
-export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
-  const { user } = useAuth();
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>("resumo");
-
+  const [localOS, setLocalOS] = useState<OrdemServico>(os);
   const [itens, setItens] = useState<OSItem[]>([]);
-  const [checklist, setChecklist] = useState<OSChecklist[]>([]);
-  const [fotos, setFotos] = useState<OSFoto[]>([]);
-  const [timeline, setTimeline] = useState<OSTimeline[]>([]);
-
-  // ===== Mão de obra =====
-  const [maoDeObra, setMaoDeObra] = useState<string>("");
+  const [maoObra, setMaoObra] = useState<number>(getMaoDeObra(os));
   const [maoError, setMaoError] = useState<string>("");
 
-  // ===== Status =====
-  const [status, setStatus] = useState<StatusOS>(getStatusFromOS(os));
-
-  // ===== Modal de item =====
-  const [itemModalOpen, setItemModalOpen] = useState<boolean>(false);
-  const [itemForm, setItemForm] = useState<{
-    tipo: "servico" | "peca";
-    descricao: string;
-    quantidade: number;
-    valor_unitario: string;
-  }>({
+  const [novoItem, setNovoItem] = useState<ItemForm>({
     tipo: "servico",
     descricao: "",
     quantidade: 1,
-    valor_unitario: "",
+    valor_unitario: 0,
   });
-  const [itemError, setItemError] = useState<string>("");
-
-  const osId = useMemo(() => os.id, [os.id]);
 
   const refresh = () => {
     const raw = localDb.getOSDetails(osId) as unknown;
     const details = (raw ?? null) as OSDetails | null;
     if (!details) return;
 
+    setLocalOS(details.os);
     setItens(details.itens);
-    setChecklist(details.checklist);
-    setFotos(details.fotos);
-    setTimeline(details.timeline);
-
-    const mao = getMaoDeObraFromOS(details.os);
-    setMaoDeObra(mao > 0 ? mao.toFixed(2).replace(".", ",") : "");
-
-    setStatus(getStatusFromOS(details.os));
+    setMaoObra(getMaoDeObra(details.os));
   };
 
   useEffect(() => {
@@ -122,390 +127,546 @@ export function OSDetail({ os, onBack, onSendWhatsApp }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [osId]);
 
-  // ===== Totais separados =====
   const totalPecas = useMemo(() => {
     return itens
       .filter((i) => i.tipo === "peca")
-      .reduce((sum, i) => sum + Number(i.valor_total || 0), 0);
+      .reduce((sum, i) => sum + parseNumberSafe(i.valor_total), 0);
   }, [itens]);
 
-  const totalMaoDeObraItens = useMemo(() => {
+  const totalMaoItens = useMemo(() => {
     return itens
       .filter((i) => i.tipo === "servico")
-      .reduce((sum, i) => sum + Number(i.valor_total || 0), 0);
+      .reduce((sum, i) => sum + parseNumberSafe(i.valor_total), 0);
   }, [itens]);
 
-  const maoDeObraExtra = useMemo(() => {
-    const parsed = parseBRLDecimal(maoDeObra);
-    if (parsed === null) return 0;
-    return parsed >= 0 ? parsed : 0;
-  }, [maoDeObra]);
-
-  const totalMaoDeObra = useMemo(() => {
-    return totalMaoDeObraItens + maoDeObraExtra;
-  }, [totalMaoDeObraItens, maoDeObraExtra]);
+  const totalMao = useMemo(() => {
+    return Number(
+      (totalMaoItens + (Number.isFinite(maoObra) ? maoObra : 0)).toFixed(2),
+    );
+  }, [totalMaoItens, maoObra]);
 
   const totalGeral = useMemo(() => {
-    return totalPecas + totalMaoDeObra;
-  }, [totalPecas, totalMaoDeObra]);
+    return Number((totalPecas + totalMao).toFixed(2));
+  }, [totalPecas, totalMao]);
 
-  const toggleChecklistItem = (item: OSChecklist) => {
-    const checked = localDb.toggleChecklist(item.id);
-    if (checked !== null) {
-      setChecklist((prev) =>
-        prev.map((c) => (c.id === item.id ? { ...c, checked } : c)),
-      );
-    }
+  // ================================
+  // Ações
+  // ================================
+  const adicionarItem = () => {
+    const descricao = novoItem.descricao.trim();
+    if (!descricao) return;
+
+    const qtd = Number(novoItem.quantidade);
+    const unit = Number(novoItem.valor_unitario);
+
+    if (!Number.isFinite(qtd) || qtd <= 0) return;
+    if (!Number.isFinite(unit) || unit <= 0) return;
+
+    localDb.addOSItem({
+      os_id: osId,
+      tipo: novoItem.tipo,
+      descricao,
+      quantidade: qtd,
+      valor_unitario: unit,
+    });
+
+    setNovoItem({
+      tipo: "servico",
+      descricao: "",
+      quantidade: 1,
+      valor_unitario: 0,
+    });
+
+    refresh();
   };
 
-  const salvarMaoDeObra = () => {
+  const salvarMaoObra = () => {
     setMaoError("");
+    const valor = Number(maoObra);
 
-    const valor = parseBRLDecimal(maoDeObra);
-    if (valor === null || valor < 0) {
+    if (!Number.isFinite(valor) || valor < 0) {
       setMaoError("Valor inválido.");
       return;
     }
 
-    localDb.setMaoDeObra({ os_id: osId, valor, user_id: user?.id });
+    localDb.setMaoDeObra({ os_id: osId, valor });
     refresh();
   };
 
-  const salvarStatus = () => {
-    localDb.setOSStatus({
-      os_id: osId,
-      status,
-      user_id: user?.id,
-    });
+  const zerarMaoObra = () => {
+    localDb.clearMaoDeObra({ os_id: osId });
     refresh();
   };
 
-  const addItem = () => {
-    setItemError("");
-
-    const descricao = itemForm.descricao.trim();
-    if (!descricao) {
-      setItemError("Informe a descrição.");
-      return;
-    }
-
-    const qtd = Number(itemForm.quantidade);
-    if (!Number.isFinite(qtd) || qtd <= 0) {
-      setItemError("Quantidade inválida.");
-      return;
-    }
-
-    const unit = parseBRLDecimal(itemForm.valor_unitario);
-    if (unit === null || unit <= 0) {
-      setItemError("Valor inválido.");
-      return;
-    }
-
-    localDb.addOSItem({
-      os_id: osId,
-      tipo: itemForm.tipo,
-      descricao,
-      quantidade: qtd,
-      valor_unitario: unit,
-      user_id: user?.id,
-    });
-
+  const alterarStatus = (status: StatusOS) => {
+    localDb.setOSStatus({ os_id: osId, status });
     refresh();
+  };
 
-    setItemForm({
-      tipo: "servico",
-      descricao: "",
-      quantidade: 1,
-      valor_unitario: "",
-    });
-    setItemModalOpen(false);
+  const excluirItem = (itemId: string) => {
+    localDb.removeOSItem({ item_id: itemId });
+    refresh();
+  };
+
+  const excluirPecas = () => {
+    localDb.removeOSItensByTipo({ os_id: osId, tipo: "peca" });
+    refresh();
+  };
+
+  const excluirMaoItens = () => {
+    localDb.removeOSItensByTipo({ os_id: osId, tipo: "servico" });
+    refresh();
+  };
+
+  const limparTudo = () => {
+    localDb.removeOSItensByTipo({ os_id: osId, tipo: "peca" });
+    localDb.removeOSItensByTipo({ os_id: osId, tipo: "servico" });
+    localDb.clearMaoDeObra({ os_id: osId });
+    refresh();
+  };
+
+  const imprimirPDF = () => {
+    const cliente = localOS.cliente?.nome ?? "";
+    const tel = localOS.cliente?.telefone ?? "";
+    const placa = localOS.veiculo?.placa ?? "";
+    const veiculo =
+      `${localOS.veiculo?.marca ?? ""} ${localOS.veiculo?.modelo ?? ""}`.trim();
+
+    const linhasPecas = itens
+      .filter((i) => i.tipo === "peca")
+      .map(
+        (i) =>
+          `<tr><td>${escapeHtml(i.descricao)}</td><td style="text-align:right">${brl(
+            Number(i.quantidade),
+          )}</td><td style="text-align:right">R$ ${brl(
+            Number(i.valor_unitario),
+          )}</td><td style="text-align:right">R$ ${brl(
+            Number(i.valor_total),
+          )}</td></tr>`,
+      )
+      .join("");
+
+    const linhasMao = itens
+      .filter((i) => i.tipo === "servico")
+      .map(
+        (i) =>
+          `<tr><td>${escapeHtml(i.descricao)}</td><td style="text-align:right">${brl(
+            Number(i.quantidade),
+          )}</td><td style="text-align:right">R$ ${brl(
+            Number(i.valor_unitario),
+          )}</td><td style="text-align:right">R$ ${brl(
+            Number(i.valor_total),
+          )}</td></tr>`,
+      )
+      .join("");
+
+    const extraMao =
+      Number.isFinite(maoObra) && maoObra > 0
+        ? `<tr><td>Mão de obra (mecânico)</td><td style="text-align:right">-</td><td style="text-align:right">-</td><td style="text-align:right">R$ ${brl(
+            maoObra,
+          )}</td></tr>`
+        : "";
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Orçamento OS #${localOS.numero ?? ""}</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
+  .row{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  h1{font-size:20px;margin:0 0 6px 0}
+  .muted{color:#555;font-size:12px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #ddd;padding:8px;font-size:12px}
+  th{background:#f5f5f5;text-align:left}
+  .section{margin-top:18px}
+  .totals{margin-top:14px;font-size:12px}
+  .totals div{display:flex;justify-content:space-between;padding:4px 0}
+  .totals .grand{font-weight:700;font-size:14px}
+  @media print{body{padding:0}}
+</style>
+</head>
+<body>
+  <div class="row">
+    <div>
+      <h1>Orçamento / OS #${localOS.numero ?? ""}</h1>
+      <div class="muted">Veículo: ${escapeHtml(placa)}${
+        veiculo ? ` • ${escapeHtml(veiculo)}` : ""
+      }</div>
+      <div class="muted">Cliente: ${escapeHtml(cliente)}${
+        tel ? ` • ${escapeHtml(tel)}` : ""
+      }</div>
+      <div class="muted">Status: ${escapeHtml(String(localOS.status ?? ""))}</div>
+    </div>
+    <div class="muted" style="text-align:right">
+      Emissão: ${new Date().toLocaleDateString("pt-BR")}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 style="font-size:14px;margin:0 0 6px 0">Peças</h2>
+    <table>
+      <thead><tr><th>Descrição</th><th style="text-align:right">Qtd</th><th style="text-align:right">Unit</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>${
+        linhasPecas ||
+        `<tr><td colspan="4" class="muted">Nenhuma peça</td></tr>`
+      }</tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2 style="font-size:14px;margin:0 0 6px 0">Mão de obra</h2>
+    <table>
+      <thead><tr><th>Descrição</th><th style="text-align:right">Qtd</th><th style="text-align:right">Unit</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>${
+        linhasMao || extraMao
+          ? `${linhasMao}${extraMao}`
+          : `<tr><td colspan="4" class="muted">Nenhuma mão de obra</td></tr>`
+      }</tbody>
+    </table>
+  </div>
+
+  <div class="totals">
+    <div><span>Peças</span><span>R$ ${brl(totalPecas)}</span></div>
+    <div><span>Mão de obra</span><span>R$ ${brl(totalMao)}</span></div>
+    <div class="grand"><span>Total</span><span>R$ ${brl(totalGeral)}</span></div>
+  </div>
+
+  <script>window.print()</script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank", "noopener,noreferrer");
+    if (!w) return;
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   return (
-    <div className="p-4 space-y-3">
-      <Button onClick={onBack}>← Voltar</Button>
+    <div className="p-4 space-y-4">
+      <button
+        className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+        onClick={onBack}
+      >
+        ← Voltar para lista
+      </button>
 
-      <Card>
-        <p className="text-gray-400 text-sm">OS #{os.numero}</p>
-        <h2 className="text-xl text-white font-bold">{os.veiculo?.placa}</h2>
-        <p className="text-gray-400">{os.cliente?.nome}</p>
-
-        <div className="mt-3 space-y-1 text-sm">
-          <div className="flex justify-between text-gray-200">
-            <span>Peças</span>
-            <span>R$ {formatBRL(totalPecas)}</span>
+      <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-2xl font-bold text-white font-mono">
+            OS #{localOS.numero}
           </div>
 
-          <div className="flex justify-between text-gray-200">
-            <span>Mão de obra</span>
-            <span>R$ {formatBRL(totalMaoDeObra)}</span>
-          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={imprimirPDF}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-bold rounded-lg transition-colors"
+            >
+              PDF
+            </button>
 
-          <hr className="border-gray-800 my-2" />
-
-          <div className="flex justify-between font-semibold text-[#FFC107]">
-            <span>Total</span>
-            <span>R$ {formatBRL(totalGeral)}</span>
+            <button
+              onClick={() => onSendWhatsApp(localOS)}
+              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors"
+            >
+              WhatsApp
+            </button>
           </div>
         </div>
 
-        <Button className="mt-3" onClick={() => onSendWhatsApp(os)}>
-          Enviar WhatsApp
-        </Button>
-      </Card>
+        <div className="text-sm text-zinc-400">
+          Status atual:{" "}
+          <span className="text-yellow-400 font-bold uppercase">
+            {String(localOS.status)}
+          </span>
+        </div>
 
-      {/* Tabs */}
-      <div className="grid grid-cols-5 gap-2">
-        {(["resumo", "itens", "checklist", "fotos", "timeline"] as const).map(
-          (tab) => (
-            <Button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={activeTab === tab ? "bg-[#FFC107] text-black" : ""}
-            >
-              {tab}
-            </Button>
-          ),
-        )}
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => alterarStatus("aberta")}
+            className="px-2 py-1 bg-zinc-800 rounded"
+          >
+            Aberta
+          </button>
+
+          <button
+            onClick={() => alterarStatus("em_andamento")}
+            className="px-2 py-1 bg-zinc-800 rounded"
+          >
+            Em andamento
+          </button>
+
+          <button
+            onClick={() => alterarStatus("aguardando_peca")}
+            className="px-2 py-1 bg-zinc-800 rounded"
+          >
+            Aguardando peça
+          </button>
+
+          <button
+            onClick={() => alterarStatus("concluida")}
+            className="px-2 py-1 bg-green-900 rounded"
+          >
+            Concluída
+          </button>
+
+          <button
+            onClick={() => alterarStatus("entregue")}
+            className="px-2 py-1 bg-blue-900 rounded"
+          >
+            Entregue
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+          <div className="bg-zinc-800/40 p-3 rounded-lg border border-zinc-800">
+            <div className="text-xs text-zinc-400">Peças</div>
+            <div className="text-lg font-bold text-white">
+              R$ {brl(totalPecas)}
+            </div>
+          </div>
+
+          <div className="bg-zinc-800/40 p-3 rounded-lg border border-zinc-800">
+            <div className="text-xs text-zinc-400">Mão de obra</div>
+            <div className="text-lg font-bold text-white">
+              R$ {brl(totalMao)}
+            </div>
+          </div>
+
+          <div className="bg-zinc-800/40 p-3 rounded-lg border border-zinc-800">
+            <div className="text-xs text-zinc-400">Total</div>
+            <div className="text-lg font-bold text-yellow-400">
+              R$ {brl(totalGeral)}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ===== RESUMO ===== */}
-      {activeTab === "resumo" && (
-        <>
-          <Card>
-            <p className="text-white font-semibold mb-2">
-              Mão de obra (mecânico)
-            </p>
+      {/* Ações rápidas */}
+      <div className="bg-zinc-900 rounded-xl p-4 space-y-2 border border-zinc-800">
+        <div className="font-bold text-white">Ações rápidas</div>
 
-            <div className="grid grid-cols-3 gap-2 items-end">
-              <div className="col-span-2">
-                <Input
-                  label="Valor (R$)"
-                  inputMode="decimal"
-                  placeholder="Ex: 150,00"
-                  value={maoDeObra}
-                  onChange={(e) => setMaoDeObra(e.target.value)}
-                />
-              </div>
-
-              <Button onClick={salvarMaoDeObra}>Salvar</Button>
-            </div>
-
-            {maoError && (
-              <p className="text-sm text-red-400 mt-2">{maoError}</p>
-            )}
-          </Card>
-
-          <Card>
-            <p className="text-white font-semibold mb-2">Status da OS</p>
-
-            <div className="grid grid-cols-3 gap-2 items-end">
-              <div className="col-span-2">
-                <label className="block text-sm text-gray-400 mb-1">
-                  Status
-                </label>
-
-                <select
-                  className="w-full min-h-[48px] rounded-xl bg-[#1A1F26] border border-gray-800 text-white px-3"
-                  value={status}
-                  onChange={(e) => {
-                    const v = e.target.value as unknown;
-                    setStatus(isStatusOS(v) ? v : "aberta");
-                  }}
-                >
-                  <option value="aberta">aberta</option>
-                  <option value="em_andamento">em_andamento</option>
-                  <option value="aguardando_peca">aguardando_peca</option>
-                  <option value="concluida">concluida (recebeu)</option>
-                  <option value="entregue">entregue</option>
-                </select>
-              </div>
-
-              <Button onClick={salvarStatus}>Salvar</Button>
-            </div>
-
-            <p className="text-sm text-gray-400 mt-2">
-              Marque <b>concluida</b> quando receber o pagamento. Isso entra no
-              faturamento do Dashboard.
-            </p>
-          </Card>
-        </>
-      )}
-
-      {/* ===== ITENS ===== */}
-      {activeTab === "itens" && (
-        <>
-          <Card className="flex items-center justify-between">
-            <div>
-              <p className="text-white font-semibold">Itens da OS</p>
-              <p className="text-sm text-gray-400">Serviços e peças</p>
-            </div>
-            <Button onClick={() => setItemModalOpen(true)}>
-              Adicionar item
-            </Button>
-          </Card>
-
-          {itens.length === 0 ? (
-            <Card>
-              <p className="text-gray-400">Nenhum item lançado ainda.</p>
-            </Card>
-          ) : (
-            itens.map((i) => (
-              <Card key={i.id}>
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-white">{i.descricao}</p>
-                    <p className="text-gray-400 text-sm">
-                      {i.quantidade} x R$ {formatBRL(Number(i.valor_unitario))}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-1">
-                      Tipo: {i.tipo === "peca" ? "peça" : "mão de obra"}
-                    </p>
-                  </div>
-                  <p className="text-[#FFC107]">
-                    R$ {formatBRL(Number(i.valor_total))}
-                  </p>
-                </div>
-              </Card>
-            ))
-          )}
-        </>
-      )}
-
-      {/* ===== CHECKLIST ===== */}
-      {activeTab === "checklist" &&
-        checklist.map((c) => (
-          <Card
-            key={c.id}
-            onClick={() => toggleChecklistItem(c)}
-            className="cursor-pointer"
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={excluirPecas}
+            className="bg-red-800 hover:bg-red-700 text-white font-bold py-2 rounded-lg"
           >
-            <div className="flex justify-between">
-              <p className="text-white">{c.item}</p>
-              <p>{c.checked ? "✅" : "⬜"}</p>
+            Excluir Peças
+          </button>
+
+          <button
+            onClick={excluirMaoItens}
+            className="bg-red-800 hover:bg-red-700 text-white font-bold py-2 rounded-lg"
+          >
+            Excluir Mão de Obra
+          </button>
+
+          <button
+            onClick={zerarMaoObra}
+            className="bg-red-700 hover:bg-red-600 text-white font-bold py-2 rounded-lg"
+          >
+            Zerar M.O. Mecânico
+          </button>
+
+          <button
+            onClick={limparTudo}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg"
+          >
+            Limpar Tudo
+          </button>
+        </div>
+      </div>
+
+      {/* Itens */}
+      <div className="bg-zinc-900 rounded-xl p-4 space-y-3 border border-zinc-800">
+        <div className="font-bold text-white">Itens</div>
+
+        {itens.length > 0 && (
+          <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-zinc-500 border-b border-zinc-800 pb-2 px-1">
+            <div className="col-span-1">Tipo</div>
+            <div className="col-span-5">Descrição</div>
+            <div className="col-span-2 text-center">Qtd</div>
+            <div className="col-span-2 text-right">Unitário</div>
+            <div className="col-span-2 text-right">Ações</div>
+          </div>
+        )}
+
+        {itens.map((f) => (
+          <div
+            key={f.id}
+            className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center text-sm border-b border-zinc-800/50 py-2 px-1 hover:bg-zinc-800/30 transition-colors"
+          >
+            <div className="md:col-span-1">
+              <span
+                className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                  f.tipo === "servico"
+                    ? "bg-blue-900/50 text-blue-300"
+                    : "bg-emerald-900/50 text-emerald-300"
+                }`}
+              >
+                {f.tipo === "servico" ? "MO" : "PÇA"}
+              </span>
             </div>
-          </Card>
+
+            <div className="md:col-span-5 text-white font-medium">
+              {f.descricao}
+            </div>
+
+            <div className="md:col-span-2 md:text-center text-zinc-400">
+              <span className="md:hidden text-zinc-500 mr-1">Qtd:</span>
+              {Number(f.quantidade ?? 0)}
+            </div>
+
+            <div className="md:col-span-2 md:text-right text-zinc-400">
+              <span className="md:hidden text-zinc-500 mr-1">Vl Unit:</span>
+              R$ {brl(Number(f.valor_unitario ?? 0))}
+            </div>
+
+            <div className="md:col-span-2 flex md:justify-end gap-2">
+              <div className="text-right font-bold text-white">
+                R$ {brl(Number(f.valor_total ?? 0))}
+              </div>
+
+              <button
+                onClick={() => excluirItem(f.id)}
+                className="bg-red-700 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-lg"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
         ))}
 
-      {/* ===== FOTOS ===== */}
-      {activeTab === "fotos" && (
-        <Card>
-          <p className="text-gray-400">
-            Fotos: (se você quiser, eu implemento upload local base64 agora, sem
-            mudar o layout)
-          </p>
-
-          {fotos.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {fotos.map((f) => (
-                <div
-                  key={f.id}
-                  className="rounded-lg overflow-hidden border border-gray-800"
-                >
-                  {f.url && (
-                    <img
-                      src={f.url}
-                      className="w-full h-24 object-cover"
-                      alt=""
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* ===== TIMELINE ===== */}
-      {activeTab === "timeline" &&
-        timeline.map((t) => (
-          <Card key={t.id}>
-            <p className="text-white">{t.evento}</p>
-            <p className="text-gray-400 text-sm">{t.created_at}</p>
-          </Card>
-        ))}
-
-      {/* ===== MODAL ITEM ===== */}
-      {itemModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-end p-4 z-50">
-          <div className="w-full bg-[#0F1216] rounded-xl p-4 space-y-3">
-            <h3 className="text-white text-lg">Novo item</h3>
-
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                onClick={() => setItemForm((p) => ({ ...p, tipo: "servico" }))}
-                className={
-                  itemForm.tipo === "servico" ? "bg-[#FFC107] text-black" : ""
-                }
-              >
-                Mão de obra
-              </Button>
-              <Button
-                onClick={() => setItemForm((p) => ({ ...p, tipo: "peca" }))}
-                className={
-                  itemForm.tipo === "peca" ? "bg-[#FFC107] text-black" : ""
-                }
-              >
-                Peça
-              </Button>
-            </div>
-
-            <Input
-              label="Descrição"
-              placeholder={
-                itemForm.tipo === "servico"
-                  ? "Ex: Troca de óleo"
-                  : "Ex: Filtro de óleo"
-              }
-              value={itemForm.descricao}
-              onChange={(e) =>
-                setItemForm((p) => ({ ...p, descricao: e.target.value }))
-              }
-            />
-
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="Quantidade"
-                type="number"
-                min={1}
-                value={String(itemForm.quantidade)}
+        {/* Formulário novo item */}
+        <div className="bg-zinc-800/40 p-4 rounded-xl border border-zinc-800 space-y-4 mt-2">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="md:col-span-2">
+              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
+                Tipo (auto)
+              </label>
+              <select
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                value={novoItem.tipo}
                 onChange={(e) =>
-                  setItemForm((p) => ({
+                  setNovoItem((p) => ({
+                    ...p,
+                    tipo: e.target.value as "servico" | "peca",
+                  }))
+                }
+              >
+                <option value="peca">Peça</option>
+                <option value="servico">Mão de obra</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-5">
+              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
+                Descrição
+              </label>
+              <input
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                placeholder="Ex: Velas / Troca de óleo"
+                value={novoItem.descricao}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const suggested = suggestTipo(value);
+                  setNovoItem((p) => ({
+                    ...p,
+                    descricao: value,
+                    tipo: suggested,
+                  }));
+                }}
+              />
+              <div className="text-[11px] text-zinc-500 mt-1">
+                Sugestão automática:{" "}
+                {novoItem.tipo === "peca" ? "Peça" : "Mão de obra"}
+              </div>
+            </div>
+
+            <div className="md:col-span-1">
+              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
+                Qtd
+              </label>
+              <input
+                type="number"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                min={1}
+                value={novoItem.quantidade}
+                onChange={(e) =>
+                  setNovoItem((p) => ({
                     ...p,
                     quantidade: Number(e.target.value),
                   }))
                 }
               />
-              <Input
-                label="Valor unitário (R$)"
-                inputMode="decimal"
-                placeholder="Ex: 120,00"
-                value={itemForm.valor_unitario}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
+                Vl Unitário
+              </label>
+              <input
+                type="number"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                placeholder="0"
+                value={novoItem.valor_unitario}
                 onChange={(e) =>
-                  setItemForm((p) => ({ ...p, valor_unitario: e.target.value }))
+                  setNovoItem((p) => ({
+                    ...p,
+                    valor_unitario: Number(e.target.value),
+                  }))
                 }
               />
             </div>
 
-            {itemError && <p className="text-red-400 text-sm">{itemError}</p>}
-
-            <div className="flex gap-2">
-              <Button onClick={addItem} className="flex-1">
-                Salvar
-              </Button>
-
-              <Button
-                onClick={() => setItemModalOpen(false)}
-                className="flex-1 bg-gray-700"
+            <div className="md:col-span-2 flex items-end">
+              <button
+                onClick={adicionarItem}
+                className="w-full bg-yellow-500 hover:bg-yellow-600 active:scale-95 text-zinc-950 font-bold py-2 rounded-lg transition-all"
               >
-                Cancelar
-              </Button>
+                Adicionar
+              </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Mão de obra mecânico */}
+      <div className="bg-zinc-900 rounded-xl p-4 space-y-2 border border-zinc-800">
+        <div className="font-bold text-white">Mão de obra (mecânico)</div>
+
+        <div className="flex gap-2">
+          <input
+            type="number"
+            className="flex-1 bg-zinc-800 rounded px-2 py-2 text-white"
+            value={maoObra}
+            onChange={(e) => setMaoObra(Number(e.target.value))}
+          />
+
+          <button
+            onClick={salvarMaoObra}
+            className="bg-green-700 hover:bg-green-600 px-3 rounded text-white font-bold"
+          >
+            Salvar
+          </button>
+        </div>
+
+        {maoError && <div className="text-sm text-red-400">{maoError}</div>}
+      </div>
     </div>
   );
 }
 
-export default OSDetail;
+// utilitário simples pra print
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
