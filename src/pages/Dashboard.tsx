@@ -136,14 +136,14 @@ function MetricCard({
   return (
     <div
       className={[
-        "min-w-[240px] flex-1 rounded-2xl border border-yellow-500/15 bg-black/60",
+        "w-full rounded-2xl border border-yellow-500/15 bg-black/60",
         "p-4 ring-1 backdrop-blur-md",
         a.ring,
         a.glow,
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="min-w-0 flex flex-col gap-1">
           <span className="text-[11px] uppercase tracking-[0.18em] text-white/60">
             {title}
           </span>
@@ -253,7 +253,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
   const temAtraso = atrasadosValor > 0;
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white pb-[calc(96px+env(safe-area-inset-bottom))]">
       {/* Background glow / textura */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-yellow-400/12 blur-3xl" />
@@ -261,7 +261,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(250,204,21,0.08)_1px,transparent_0)] [background-size:18px_18px] opacity-40" />
       </div>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-5 md:px-6 md:py-7">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pr-5 py-5 md:px-6 md:pr-6 md:py-7">
         {/* Header */}
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-1">
@@ -277,15 +277,15 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge tone="neutral">OS: {ordens.length.toString()}</Badge>
+            <Badge tone="neutral">{`OS: ${ordens.length.toString()}`}</Badge>
             <Badge tone={temAtraso ? "danger" : "success"}>
               {temAtraso ? "Tem atraso" : "Tudo ok"}
             </Badge>
           </div>
         </div>
 
-        {/* FATURAMENTO (Dia/Semana/Mês) */}
-        <div className="flex gap-4 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] md:grid md:grid-cols-3 md:overflow-visible">
+        {/* ✅ MÉTRICAS EM GRID (mobile = 1 col; md = 3 col) */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <MetricCard
             title="Faturamento do dia"
             value={formatCurrencyBRL(faturamentoDia)}
@@ -304,27 +304,21 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
             accent="primary"
             hint="Pagos no mês (paid_at)"
           />
-        </div>
 
-        {/* PREVISTOS (Semana/Mês) + ATRASADOS */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <div className="flex gap-4 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] md:grid md:grid-cols-2 md:overflow-visible">
-              <MetricCard
-                title="Previsto da semana"
-                value={formatCurrencyBRL(previstoSemana)}
-                accent="warning"
-                hint="Não pago • por previsão"
-              />
-              <MetricCard
-                title="Previsto do mês"
-                value={formatCurrencyBRL(previstoMes)}
-                accent="warning"
-                hint="Não pago • por previsão"
-              />
-            </div>
-          </div>
+          <MetricCard
+            title="Previsto da semana"
+            value={formatCurrencyBRL(previstoSemana)}
+            accent="warning"
+            hint="Não pago • por previsão"
+          />
+          <MetricCard
+            title="Previsto do mês"
+            value={formatCurrencyBRL(previstoMes)}
+            accent="warning"
+            hint="Não pago • por previsão"
+          />
 
+          {/* Clientes atrasados ocupa 1 coluna no mobile e 1 no desktop (já encaixa perfeito no grid) */}
           <div className="rounded-2xl border border-yellow-500/15 bg-black/60 p-4 ring-1 ring-yellow-400/10 backdrop-blur-md">
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
@@ -335,7 +329,9 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
                   {atrasadosCount.toString()}
                 </span>
                 <span
-                  className={`text-sm ${temAtraso ? "text-red-200" : "text-white/55"}`}
+                  className={`text-sm ${
+                    temAtraso ? "text-red-200" : "text-white/55"
+                  }`}
                 >
                   {formatCurrencyBRL(atrasadosValor)}
                 </span>
@@ -377,7 +373,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-3 md:grid md:grid-cols-2">
             {recentes.map((os) => {
               const placa = os.veiculo?.placa ?? "-";
               const cliente = os.cliente?.nome ?? "Sem cliente";
@@ -401,7 +397,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
                   type="button"
                   onClick={() => onSelectOS(os)}
                   className={[
-                    "text-left rounded-2xl border bg-black/60 p-5 ring-1 backdrop-blur-md transition-all",
+                    "w-full text-left rounded-2xl border bg-black/60 p-4 sm:p-5 ring-1 backdrop-blur-md transition-all",
                     "active:scale-[0.99]",
                     atrasada
                       ? "border-red-400/25 ring-red-400/15"
@@ -411,7 +407,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-lg font-bold text-yellow-400">
+                        <span className="font-mono text-base sm:text-lg font-bold text-yellow-400">
                           {placa}
                         </span>
                         {numero ? (
@@ -444,7 +440,9 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
                         {formatCurrencyBRL(os.valor_total || 0)}
                       </div>
                       <div
-                        className={`mt-1 text-xs ${atrasada ? "text-red-200" : "text-white/55"}`}
+                        className={`mt-1 text-xs ${
+                          atrasada ? "text-red-200" : "text-white/55"
+                        }`}
                       >
                         Previsão: {previsto}
                       </div>
@@ -461,7 +459,7 @@ export default function Dashboard({ onSelectOS }: DashboardProps) {
             })}
 
             {recentes.length === 0 ? (
-              <div className="col-span-1 rounded-2xl border border-yellow-500/15 bg-black/60 p-6 text-center text-sm text-white/60 ring-1 ring-yellow-400/10 backdrop-blur-md md:col-span-2">
+              <div className="rounded-2xl border border-yellow-500/15 bg-black/60 p-6 text-center text-sm text-white/60 ring-1 ring-yellow-400/10 backdrop-blur-md md:col-span-2">
                 Nenhuma OS cadastrada ainda.
               </div>
             ) : null}
